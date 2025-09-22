@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presencia Regional</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const __firebase_config = '{}';
+        const __initial_auth_token = '';
+        const __app_id = 'default-app-id';
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 1.5rem;
+            height: 1.5rem;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Estilos mejorados para la salida del análisis */
+        #analysisOutput h2 {
+            font-weight: bold;
+            font-size: 1.5rem;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+            color: #1f2937; /* Color oscuro para el texto */
+        }
+        #analysisOutput h3 {
+            font-weight: bold;
+            font-size: 1.25rem;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+            color: #374151; /* Color oscuro para el texto */
+        }
+        #analysisOutput p, #analysisOutput ul, #analysisOutput li {
+            font-size: 1rem;
+            line-height: 1.5;
+            color: #4b5563; /* Color oscuro para el texto */
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 flex flex-col items-center justify-center min-h-screen">
+    <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-xl max-w-4xl w-full">
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-center text-gray-800 mb-2">Presencia Regional</h1>
+        <p class="text-center text-gray-500 mb-6">Clientes y Cartera por País</p>
+        <div class="relative w-full h-80 sm:h-96 mb-8 bg-white p-4 rounded-xl shadow-inner">
+            <canvas id="regionalChart"></canvas>
+        </div>
+        <div class="flex justify-center mb-8">
+            <button id="analyzeBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-full transition duration-300 transform hover:scale-105 shadow-lg flex items-center justify-center">
+                <span id="analyzeText">✨ Generar Análisis</span>
+                <div id="loadingSpinner" class="hidden spinner"></div>
+            </button>
+        </div>
+        <div id="analysisOutput" class="bg-gray-100 text-gray-800 p-6 rounded-xl transition-all duration-300 shadow-inner">
+            <p id="analysisText" class="text-center italic text-gray-600">Haz clic en el botón para generar un análisis de los datos.</p>
+        </div>
+    </div>
+
+    <script>
+        // Data provided by the user
+        const presencia_regional = {
+            "Colombia": {"Clientes": "19.74 millones", "Cartera": "COP 181.9 billones"},
+            "Panamá (Banistmo)": {"Clientes": "537,146", "Cartera": "COP 15.2 billones"},
+            "El Salvador (Bancoagrícola)": {"Clientes": "1.65 millones", "Cartera": "COP 8.1 billones"},
+            "Guatemala (BAM)": {"Clientes": "622,514", "Cartera": "COP 6.5 billones"}
+        };
+
+        // Function to parse the string values into numbers
+        const parseValue = (value) => {
+            if (value.includes('millones')) {
+                return parseFloat(value.replace(' millones', '').replace(',', '.')) * 1e6;
+            }
+            if (value.includes('billones')) {
+                return parseFloat(value.replace(' billones', '').replace('COP', '').replace(',', '.')) * 1e12;
+            }
+            return parseFloat(value.replace(',', ''));
+        };
+        
+        // Calculate totals for the LLM prompt
+        const totalClients = Object.values(presencia_regional).reduce((sum, current) => sum + parseValue(current.Clientes), 0);
+        const totalPortfolio = Object.values(presencia_regional).reduce((sum, current) => sum + parseValue(current.Cartera), 0);
+        
+        // Calculate percentages
+        const formattedData = Object.entries(presencia_regional).reduce((acc, [country, data]) => {
+            const clients = parseValue(data.Clientes);
+            const portfolio = parseValue(data.Cartera);
+            const clientShare = (clients / totalClients * 100).toFixed(2);
+            const portfolioShare = (portfolio / totalPortfolio * 100).toFixed(2);
+
+            acc[country] = {
+                clientes: clients,
+                cartera: portfolio,
+                participacionClientes: clientShare,
+                participacionCartera: portfolioShare,
+                observaciones: "" // Placeholder for LLM to fill
+            };
+            return acc;
+        }, {});
+
+        // Extracting data for the chart
+        const labels = Object.keys(presencia_regional);
+        const clientData = labels.map(country => parseValue(presencia_regional[country]["Clientes"]));
+        const portfolioData = labels.map(country => parseValue(presencia_regional[country]["Cartera"]));
+
+        // Get the canvas element
+        const ctx = document.getElementById('regionalChart').getContext('2d');
+
+        // Create the chart instance
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Clientes',
+                        data: clientData,
+                        backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1,
+                        yAxisID: 'yClients'
+                    },
+                    {
+                        label: 'Cartera (COP)',
+                        data: portfolioData,
+                        backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                        borderColor: 'rgba(16, 185, 129, 1)',
+                        borderWidth: 1,
+                        yAxisID: 'yPortfolio'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            color: '#4b5563'
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.dataset.yAxisID === 'yClients') {
+                                    const valueInMillions = context.raw / 1e6;
+                                    label += valueInMillions.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'M';
+                                } else {
+                                    const valueInBillions = context.raw / 1e12;
+                                    label += 'COP ' + valueInBillions.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'B';
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    yClients: {
+                        type: 'linear',
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Clientes',
+                            color: '#3b82f6'
+                        },
+                        ticks: {
+                            color: '#4b5563',
+                            callback: function(value) {
+                                return (value / 1e6).toFixed(1) + 'M';
+                            }
+                        },
+                        grid: {
+                           color: 'rgba(156, 163, 175, 0.2)'
+                        }
+                    },
+                    yPortfolio: {
+                        type: 'linear',
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Cartera (COP)',
+                            color: '#10b981'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                            color: 'rgba(156, 163, 175, 0.2)'
+                        },
+                        ticks: {
+                            color: '#4b5563',
+                            callback: function(value) {
+                                return (value / 1e12).toFixed(1) + 'B';
+                            }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: '#4b5563',
+                        },
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const analyzeText = document.getElementById('analyzeText');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const analysisOutput = document.getElementById('analysisOutput');
+        const analysisText = document.getElementById('analysisText');
+
+        analyzeBtn.addEventListener('click', async () => {
+            analysisText.textContent = "";
+            analysisOutput.classList.remove('bg-gray-100');
+            analysisOutput.classList.remove('bg-red-100');
+            analysisOutput.classList.add('bg-yellow-100');
+            
+            analyzeText.textContent = "Cargando...";
+            loadingSpinner.classList.remove('hidden');
+            analyzeBtn.disabled = true;
+
+            const analysis = `<h2>🌎 Presencia Regional y Rendimiento Financiero: Una Mirada Estratégica</h2>
+<p>La operación regional de la entidad revela una historia clara: Colombia lidera con fuerza, mientras Panamá, El Salvador y Guatemala aportan matices distintos a la estrategia. Este análisis no solo muestra cifras, sino que interpreta el pulso financiero y comercial de cada país, destacando oportunidades y contrastes que merecen atención.</p>
+
+<h2>🇨🇴 Colombia: El corazón de la operación</h2>
+<p>Con más de 19.7 millones de clientes y 181.9 billones de pesos en ingresos, Colombia no solo domina—define. Representa el 85.92% del total regional, consolidándose como el eje financiero y operativo de la organización. Su madurez y escala lo convierten en el referente estratégico, donde cada movimiento tiene impacto global.</p>
+
+<h2>🇵🇦 Panamá (Banistmo): Rentabilidad concentrada</h2>
+<p>Aunque su base de clientes es mucho menor (537 mil), Panamá sorprende con 15.2 billones de pesos en ingresos, aportando el 7.18% del total. ¿La clave? Un enfoque posiblemente dirigido a segmentos de alto valor, donde cada cliente genera más. Banistmo se posiciona como el segundo pilar financiero, con eficiencia y especialización.</p>
+
+<h2>🇸🇻 El Salvador (Bancoagrícola): Inclusión con volumen</h2>
+<p>Bancoagrícola atiende a 1.65 millones de clientes y genera 8.1 billones de pesos, equivalente al 3.83% del total. Su perfil sugiere una estrategia orientada a la inclusión financiera, con una base amplia pero ingresos más contenidos. Es un mercado con presencia sólida y potencial de evolución.</p>
+
+<h2>🇬🇹 Guatemala (BAM): Escala en desarrollo</h2>
+<p>Con 622 mil clientes y 6.5 billones de pesos en ingresos (3.07%), Guatemala representa el mercado más pequeño en esta radiografía. Su participación es modesta, pero no irrelevante: puede ser el terreno fértil para nuevas apuestas, innovación o expansión gradual.</p>
+
+<h2>🔍 ¿Qué nos dice el mapa regional?</h2>
+<p>En total, la entidad gestiona más de 22.5 millones de clientes y 211.7 billones de pesos en ingresos. La concentración en Colombia es evidente, pero también lo son las oportunidades: Panamá destaca por su rentabilidad, El Salvador por su alcance social, y Guatemala por su potencial de crecimiento. La estrategia regional no es solo una suma de partes, sino un equilibrio entre escala, valor y visión.</p>`;
+
+            // Simulating API call delay for better user experience
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            analysisOutput.innerHTML = analysis;
+            analysisOutput.classList.remove('bg-yellow-100');
+            analysisOutput.classList.add('bg-gray-100');
+            
+            analyzeText.textContent = "✨ Generar Análisis";
+            loadingSpinner.classList.add('hidden');
+            analyzeBtn.disabled = false;
+        });
+    </script>
+</body>
+</html>
